@@ -1,5 +1,3 @@
-import java.util.concurrent.TimeoutException;
-
 public class Cell extends Thread {
     private static final int TICK_MS = 100;
     private static final int REPRODUCTION_THRESHOLD = 10;
@@ -57,7 +55,11 @@ public class Cell extends Thread {
             while (state != CellState.DEAD) {
                 switch (state) {
                     case FULL:
-                        sleepTick();
+                        if (isReadyToMate()) {
+                            tryMateDuringTick();
+                        } else {
+                            sleepTick();
+                        }
                         tickDownFull();
                         break;
                     case HUNGRY:
@@ -88,9 +90,10 @@ public class Cell extends Thread {
         log("ate a food unit (total eaten: " + eatenCount + "), food left=" + population.getFoodPool().remaining());
         state = CellState.FULL;
         timeFullCounter = timeFull;
-        if (eatenCount >= REPRODUCTION_THRESHOLD) {
-            eatenCount = 0;
-            reproduce();
+        if (isAsexual && eatenCount >= REPRODUCTION_THRESHOLD) {
+            divide();
+        } else if (isReadyToMate()) {
+            log("ready to reproduce, looking for a mate while full");
         }
         return true;
     }
@@ -118,26 +121,29 @@ public class Cell extends Thread {
         log(reason + ", releasing " + yield + " food unit(s) back to the pool");
     }
 
-    private void reproduce() {
-        if (isAsexual) {
-            log("dividing (asexual reproduction)");
-            population.spawn(isAsexual, CellState.HUNGRY);
-            population.spawn(isAsexual, CellState.HUNGRY);
-            state = CellState.DEAD;
-            log("divided into two hungry cells and ceased to exist");
-        } else {
-            long waitMs = (long) (timeFull + timeStarve) * TICK_MS;
-            log("looking for a mate (will wait up to " + waitMs + "ms)");
-            try {
-                long partnerId = population.getReproductionStation().findMate(cellId, waitMs);
-                log("found a mate: Cell-" + partnerId);
-                if (cellId < partnerId) {
-                    population.spawnRandomType(CellState.HUNGRY);
-                    log("produced offspring together with Cell-" + partnerId);
-                }
-            } catch (TimeoutException e) {
-                die("could not find a mate in time");
-            }
+    private boolean isReadyToMate() {
+        return !isAsexual && eatenCount >= REPRODUCTION_THRESHOLD;
+    }
+
+    private void divide() {
+        log("dividing (asexual reproduction)");
+        population.spawn(true, CellState.HUNGRY);
+        population.spawn(true, CellState.HUNGRY);
+        state = CellState.DEAD;
+        log("divided into two hungry cells and ceased to exist");
+    }
+
+    // Spends one tick waiting for a mate instead of sleeping, so the cell's clock keeps running.
+    private void tryMateDuringTick() throws InterruptedException {
+        Long partnerId = population.getReproductionStation().tryFindMate(cellId, TICK_MS);
+        if (partnerId == null) {
+            return;
+        }
+        eatenCount = 0;
+        log("found a mate: Cell-" + partnerId);
+        if (cellId < partnerId) {
+            population.spawn(false, CellState.HUNGRY);
+            log("produced offspring together with Cell-" + partnerId);
         }
     }
 
