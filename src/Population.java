@@ -10,6 +10,7 @@ public class Population {
     private final AtomicInteger nextId = new AtomicInteger(1);
     private final int timeFull;
     private final int timeStarve;
+    private boolean stopping;
 
     public Population(FoodPool foodPool, int timeFull, int timeStarve) {
         this.foodPool = foodPool;
@@ -30,7 +31,11 @@ public class Population {
         return cells;
     }
 
-    public Cell spawn(boolean isAsexual, CellState initialState) {
+    // Returns null if shutdown has already started.
+    public synchronized Cell spawn(boolean isAsexual, CellState initialState) {
+        if (stopping) {
+            return null;
+        }
         int id = nextId.getAndIncrement();
         Cell cell = new Cell(id, isAsexual, timeFull, timeStarve, initialState, this);
         cells.add(cell);
@@ -44,7 +49,23 @@ public class Population {
         return spawn(asexual, initialState);
     }
 
+    // Counts biological survivors, including cells paused by shutdown.
     public long countAlive() {
         return cells.stream().filter(c -> c.getCellState() != CellState.DEAD).count();
+    }
+
+    public void shutdown() throws InterruptedException {
+        List<Cell> snapshot;
+        synchronized (this) {
+            stopping = true;
+            snapshot = List.copyOf(cells);
+            for (Cell cell : snapshot) {
+                cell.interrupt();
+            }
+        }
+        // Release the population lock before waiting: a cell may be finishing a spawn.
+        for (Cell cell : snapshot) {
+            cell.join();
+        }
     }
 }

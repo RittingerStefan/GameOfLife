@@ -15,16 +15,11 @@ public class Main {
         }
 
         Thread.sleep(simulationDurationMs);
+        population.shutdown();
 
         System.out.println();
         System.out.println("=== Simulation ended ===");
         System.out.println("Food units remaining in pool: " + foodPool.remaining());
         System.out.println("Cells alive: " + population.countAlive() + " / " + population.getCells().size() + " ever created");
-
-        for (Cell cell : population.getCells()) {
-            if (cell.isAlive()) {
-                cell.interrupt();
-            }
-        }
     }
 }

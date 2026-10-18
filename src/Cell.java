@@ -54,7 +54,7 @@ public class Cell extends Thread {
     public void run() {
         log("born as " + (isAsexual ? "asexual" : "sexual") + ", starting " + state);
         try {
-            while (state != CellState.DEAD) {
+            while (state != CellState.DEAD && !Thread.currentThread().isInterrupted()) {
                 switch (state) {
                     case FULL:
                         if (isReadyToMate()) {
