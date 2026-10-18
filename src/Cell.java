@@ -1,3 +1,5 @@
+import java.util.concurrent.TimeUnit;
+
 public class Cell extends Thread {
     private static final int TICK_MS = 100;
     private static final int REPRODUCTION_THRESHOLD = 10;
@@ -133,17 +135,21 @@ public class Cell extends Thread {
         log("divided into two hungry cells and ceased to exist");
     }
 
-    // Spends one tick waiting for a mate instead of sleeping, so the cell's clock keeps running.
+    // Searching and reproduction share one tick; an early match waits out the remainder.
     private void tryMateDuringTick() throws InterruptedException {
+        long tickStart = System.nanoTime();
         Long partnerId = population.getReproductionStation().tryFindMate(cellId, TICK_MS);
-        if (partnerId == null) {
-            return;
+        if (partnerId != null) {
+            eatenCount = 0;
+            log("found a mate: Cell-" + partnerId);
+            if (cellId < partnerId) {
+                population.spawn(false, CellState.HUNGRY);
+                log("produced offspring together with Cell-" + partnerId);
+            }
         }
-        eatenCount = 0;
-        log("found a mate: Cell-" + partnerId);
-        if (cellId < partnerId) {
-            population.spawn(false, CellState.HUNGRY);
-            log("produced offspring together with Cell-" + partnerId);
+        long remainingNanos = TimeUnit.MILLISECONDS.toNanos(TICK_MS) - (System.nanoTime() - tickStart);
+        if (remainingNanos > 0) {
+            TimeUnit.NANOSECONDS.sleep(remainingNanos);
         }
     }
 
