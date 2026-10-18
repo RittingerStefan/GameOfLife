@@ -1,2 +1,42 @@
 javac -d out src/*.java
 java -cp out Main
+
+The default is the normal 25-second simulation with corrected eating.
+Choose the eating implementation in the normal simulation:
+java -cp out Main --eating=safe
+java -cp out Main --eating=race
+
+Reproduce the eating issue reliably using two real Cell threads and one food unit:
+java -cp out Main --demo=eating --eating=race
+Expected: 2 successful meals, -1 food remaining, food limit VIOLATED.
+
+Run the corrected version of the same scenario:
+java -cp out Main --demo=eating --eating=safe
+Expected: 1 successful meal, 0 food remaining, food limit PASS.
+
+The faulty implementation checks units.get() > 0, then decrements separately.
+Both operations individually use AtomicInteger, but their combination is not atomic.
+Two cells can both see the last food unit before either decrements it.
+The fix combines the availability check and decrement using getAndUpdate.
+This is a check-then-act race / data consistency issue in the eating system.
+
+--demo=eating enables scheduling hooks only for the first two attempts. In race
+mode both cells wait at a barrier after checking availability, before decrementing.
+In safe mode they wait before the complete atomic consume operation. The barrier
+does not change the food count or meal results; it selects an overlapping schedule.
+Long fullness/starvation times prevent extra meals or death deposits during the demo.
+The demo waits for both attempts, stops and joins both cells, then prints the result.
+Normal simulation runs have no scheduling barriers; their race may or may not appear.
+Reproduction, the mating timer fix, and synchronized shutdown are unchanged.
+
+Run focused verification (no additional test dependencies):
+javac -cp out -d out tests/EatingChecks.java
+java -cp out EatingChecks
+Expected final line:
+PASS: 10 comparisons, demo cleanup, serial faulty mode, and safe contention
+
+Show CLI options:
+java -cp out Main --help
+
+If javac is not on PATH but the Java compiler module is available, replace javac
+in the commands above with: java -m jdk.compiler/com.sun.tools.javac.Main

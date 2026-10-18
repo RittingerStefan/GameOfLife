@@ -84,7 +84,7 @@ public class Cell extends Thread {
         Thread.sleep(TICK_MS);
     }
 
-    private boolean tryEat() {
+    private boolean tryEat() throws InterruptedException {
         if (!population.getFoodPool().tryConsume()) {
             return false;
         }
