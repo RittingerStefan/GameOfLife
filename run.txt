@@ -1,7 +1,7 @@
 javac -d out src/*.java
 java -cp out Main
 
-The default is the normal 25-second simulation with corrected eating.
+The default is the normal 25-second simulation with corrected eating and reproduction.
 Choose the eating implementation in the normal simulation:
 java -cp out Main --eating=safe
 java -cp out Main --eating=race
@@ -27,7 +27,7 @@ does not change the food count or meal results; it selects an overlapping schedu
 Long fullness/starvation times prevent extra meals or death deposits during the demo.
 The demo waits for both attempts, stops and joins both cells, then prints the result.
 Normal simulation runs have no scheduling barriers; their race may or may not appear.
-Reproduction, the mating timer fix, and synchronized shutdown are unchanged.
+The mating tick remainder wait and stop/join-before-summary behavior are preserved.
 
 Run focused verification (no additional test dependencies):
 javac -cp out -d out tests/EatingChecks.java
@@ -40,3 +40,65 @@ java -cp out Main --help
 
 If javac is not on PATH but the Java compiler module is available, replace javac
 in the commands above with: java -m jdk.compiler/com.sun.tools.javac.Main
+
+Reproduction issue (category 2: deadlock)
+---------------------------------------
+java -cp out Main --demo=reproduction --reproduction=deadlock
+Expected final evidence (cell log order can vary):
+JVM-confirmed parent deadlock: true
+Cell-1-sexual waits for Cell-2-sexual; Cell-2-sexual waits for Cell-1-sexual
+Committed parents: 0
+Children created: 0
+All cell threads stopped: true
+
+java -cp out Main --demo=reproduction --reproduction=safe
+Expected final evidence:
+JVM-confirmed parent deadlock: false
+Committed parents: 2
+Children created: 1
+All cell threads stopped: true
+
+Both switches are independent; safe reproduction is the default:
+java -cp out Main --eating=race --reproduction=safe
+java -cp out Main --eating=safe --reproduction=deadlock
+These run the normal 25-second simulation. Without scheduling hooks the faulty
+lock ordering might or might not deadlock. Shutdown interrupts and joins cells,
+including cells blocked acquiring reproductive locks. Choose only one demo.
+The eating demo retains its own isolated setup and existing behavior.
+
+Motivation: committing a sexual mating updates both parents' reproductive records
+(completed mating count and last partner) together and claims a single offspring.
+Both parents process the exchanged match. A shared per-match token, selected by
+unique exchange tickets, makes the commit idempotent even if a parent is delayed.
+The two record locks protect both the joint update and the offspring claim.
+The faulty version reasonably starts with its own record and then its partner's.
+Opposite callers can each hold their own lock and wait indefinitely for the other.
+The correction acquires the same two locks in ascending cell-ID order. The commit
+and birth behavior are otherwise identical. This is a circular-wait deadlock.
+
+The demo uses real sexual Cell threads and 20 food units: each actually eats ten
+meals, with one full tick between meals. It aligns the parents before exchange.
+Only faulty mode then aligns them after each has acquired its first record lock.
+The hook changes no locks, food, records, or birth results. After the hook releases,
+the actual second lock acquisitions cause the cycle. ThreadMXBean must identify
+both parents as deadlocked with each owning the lock the other needs. A deadline
+alone never counts as a reproduced deadlock. Safe mode must commit both parents
+and actually spawn exactly one child. All result summaries follow shutdown/join.
+
+Locks use lockInterruptibly: the cycle persists until external cancellation, but
+interrupting both parents releases their held locks through finally blocks. This
+allows bounded in-process demos without leaving daemon cells behind. Demo waits
+have explicit deadlines; coordination or observation failure raises an error,
+rather than claiming a concurrency failure. Successful mating still waits out
+the remainder of its tick. No hooks are installed in normal simulations.
+
+Compile and run all focused checks:
+javac -d out src/*.java
+javac -cp out -d out tests/EatingChecks.java tests/ReproductionChecks.java
+java -cp out EatingChecks
+java -cp out ReproductionChecks
+Expected final reproduction line:
+PASS: 5 reproduction comparisons, deadlock evidence, cleanup, serial commits, and unmatched search
+The reproduction checks repeat both real-cell scenarios, verify cleanup, and
+check serialized commits in both modes claim one child; unmatched searches still
+time out normally. The original eating checks are unchanged.

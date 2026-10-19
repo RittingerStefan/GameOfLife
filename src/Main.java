@@ -2,10 +2,15 @@ public class Main {
     public static void main(String[] args) throws InterruptedException {
         EatingMode eatingMode = EatingMode.SAFE;
         boolean eatingDemo = false;
+        boolean reproductionDemo = false;
+        ReproductionMode reproductionMode = ReproductionMode.SAFE;
         for (String arg : args) {
             switch (arg) {
                 case "--eating=safe" -> eatingMode = EatingMode.SAFE;
                 case "--eating=race" -> eatingMode = EatingMode.RACE;
+                case "--reproduction=safe" -> reproductionMode = ReproductionMode.SAFE;
+                case "--reproduction=deadlock" -> reproductionMode = ReproductionMode.DEADLOCK;
+                case "--demo=reproduction" -> reproductionDemo = true;
                 case "--demo=eating" -> eatingDemo = true;
                 case "--help" -> {
                     printUsage();
@@ -18,6 +23,14 @@ public class Main {
                     return;
                 }
             }
+        }
+        if (eatingDemo && reproductionDemo) {
+            throw new IllegalArgumentException("Choose only one demo");
+        }
+        System.out.println("Reproduction mode: " + reproductionMode);
+        if (reproductionDemo) {
+            ReproductionDemo.printResult(ReproductionDemo.run(reproductionMode));
+            return;
         }
         System.out.println("Eating mode: " + eatingMode
                 + (eatingMode == EatingMode.RACE ? " (intentional check-then-act fault)" : ""));
@@ -33,7 +46,7 @@ public class Main {
         final long simulationDurationMs = 25_000;
 
         FoodPool foodPool = new FoodPool(initialFood, eatingMode);
-        Population population = new Population(foodPool, timeFull, timeStarve);
+        Population population = new Population(foodPool, timeFull, timeStarve, new ReproductionStation(reproductionMode));
 
         System.out.println("Starting simulation with " + initialCells + " cells and " + initialFood + " food units.");
         for (int i = 0; i < initialCells; i++) {
@@ -51,8 +64,9 @@ public class Main {
     }
 
     private static void printUsage() {
-        System.out.println("Usage: java -cp out Main [--eating=safe|race] [--demo=eating]");
-        System.out.println("Default: normal 25-second simulation with safe eating.");
+        System.out.println("Usage: java -cp out Main [--eating=safe|race] [--reproduction=safe|deadlock] [--demo=eating|reproduction]");
+        System.out.println("Default: normal 25-second simulation with safe eating and reproduction.");
+        System.out.println("--demo=reproduction: verify a parent lock cycle or one successful birth, then stop all cells.");
         System.out.println("--demo=eating: coordinate two hungry cell threads competing for one food unit.");
     }
 }

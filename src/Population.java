@@ -13,8 +13,12 @@ public class Population {
     private boolean stopping;
 
     public Population(FoodPool foodPool, int timeFull, int timeStarve) {
+        this(foodPool, timeFull, timeStarve, new ReproductionStation());
+    }
+
+    public Population(FoodPool foodPool, int timeFull, int timeStarve, ReproductionStation station) {
         this.foodPool = foodPool;
-        this.reproductionStation = new ReproductionStation();
+        this.reproductionStation = station;
         this.timeFull = timeFull;
         this.timeStarve = timeStarve;
     }

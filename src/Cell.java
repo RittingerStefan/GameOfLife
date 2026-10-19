@@ -140,9 +140,11 @@ public class Cell extends Thread {
         long tickStart = System.nanoTime();
         Long partnerId = population.getReproductionStation().tryFindMate(cellId, TICK_MS);
         if (partnerId != null) {
+            boolean createChild = population.getReproductionStation()
+                    .commitPair(cellId, partnerId);
             eatenCount = 0;
             log("found a mate: Cell-" + partnerId);
-            if (cellId < partnerId) {
+            if (createChild) {
                 population.spawn(false, CellState.HUNGRY);
                 log("produced offspring together with Cell-" + partnerId);
             }
